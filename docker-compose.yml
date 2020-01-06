@@ -1,0 +1,143 @@
+version: '3.7'
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.0
+    container_name: elasticsearch1
+    environment:
+      - node.name=elasticsearch1
+      - cluster.name=docker-cluster
+      - cluster.initial_master_nodes=elasticsearch1
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms256M -Xmx256M"
+      - http.cors.enabled=true
+      - http.cors.allow-origin=*
+      - network.host=_eth0_
+    ulimits:
+      nproc: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - ALL
+    # privileged: true
+    volumes:
+      - type: volume
+        source: logs
+        target: /var/log
+      - type: volume
+        source: esdata1
+        target: /usr/share/elasticsearch/data
+    networks:
+      - elastic
+      - ingress
+    ports:
+      - 9200:9200
+      - 9300:9300
+    expose:
+      - 9200
+      - 9300
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.4.0
+    container_name: kibana
+    environment:
+      SERVER_NAME: localhost
+      ELASTICSEARCH_URL: http://elasticsearch1:9200/
+    ports:
+      - 5601:5601
+    volumes:
+      - type: volume
+        source: logs
+        target: /var/log
+    ulimits:
+      nproc: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - ALL
+    networks:
+      - elastic
+      - ingress
+
+  filebeat:
+    image: kyobi/filebeat:latest
+    container_name: filebeat
+    # https://github.com/docker/swarmkit/issues/1951
+    # Need to override user so we can access the log files, and docker.sock
+    user: root
+    networks:
+      - elastic
+#    configs:
+#      - source: $PWD/configs/filebeat/filebeat.yml
+#        target: /usr/share/filebeat/filebeat.yml
+    volumes:
+      - ./configs/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      - ./filebeat/logs:/usr/share/filebeat/dockerlogs
+      - /var/run/docker.sock:/var/run/docker.sock
+      # This is needed for filebeat to load container log path as specified in filebeat.yml
+      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro
+      #Named volume fsdata. This is used to persist the registry file between restarts, so to avoid data duplication
+      - fbdata:/usr/share/filebeat/data/
+      # # This is needed for filebeat to load jenkins build log path as specified in filebeat.yml
+      # - /var/lib/docker/volumes/jenkins_home/_data/jobs/:/var/lib/docker/volumes/jenkins_home/_data/jobs/:ro
+
+      # This is needed for filebeat to load logs for system and auth modules
+      - /var/log/:/var/log/:ro
+      # This is needed for filebeat to load logs for auditd module
+      # - /var/log/audit/:/var/log/audit/:ro
+    environment:
+      - LOGSTASH_HOST= logstash:5400
+      - KIBANA_HOST= kibana:5601
+    # disable strict permission checks
+    build:
+      context: "./"
+    command: ["--strict.perms=false"]
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.4.0
+    container_name: logstash
+    ports:
+      - 5044:5044
+      - 9600:9601
+    expose:
+      - 5044
+      - 9600
+    links:
+      - elasticsearch
+    depends_on:
+      - elasticsearch
+    ulimits:
+      nproc: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    cap_add:
+      - ALL
+    networks:
+      - elastic
+  nginx:
+    image: nginx:latest
+    ports:
+        - 8081:80
+    volumes:
+        - ${PWD}/nginx-config/:/etc/nginx/conf.d/
+    command: /bin/bash -c "nginx -g 'daemon off;'"
+    ulimits:
+      nproc: 65535
+    networks:
+      - ingress
+volumes:
+  esdata1:
+  esdata2:
+  esdata3:
+  logs:
+  filebeat:
+  fbdata:
+
+networks:
+  elastic:
+  ingress:
+
+#configs:
+#  fb_config:
+#    file: $PWD/configs/filebeat/filebeat.yml

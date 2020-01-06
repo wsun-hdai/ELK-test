@@ -1,0 +1,33 @@
+filebeat.config.inputs:
+#inputs dynamically loaded from the sub-directory
+  path: ${path.config}/inputs/*.yml
+  reload.enabled: false
+filebeat.modules:
+#Filebeat system module consumes logs from host OS through a mounted volume
+#- module: system
+#  syslog:
+#    var.paths: ["/var/log/host/system.log*"]
+#Nginx Module to consume to access and error logs from mounted volume
+- module: nginx
+  access:
+    var.paths: ["/var/log/nginx/access.log*"]
+  error:
+    var.paths: ["/var/log/nginx/error.log*"]
+#luigi Module to consume to access and error logs from mounted volume
+- module: luigi
+  access:
+    var.paths: ["/var/log/luigi/luigi-server.log*"]
+  error:
+    var.paths: ["/var/log/apache2/*.err*"]
+#Mysql module consumes error and mysql-slow logs from mounted volume
+#- module: mysql
+#  error:
+#    var.paths: ["/var/log/mysql/error.log*"]
+#  slowlog:
+#    var.paths: ["/var/log/mysql/mysql-slow.log*"]
+#All data to indexed to Elasticsearch
+output.logstash:
+      hosts : ["logstash:5044"]
+
+setup.kibana:
+  host: "kibana:5061"
